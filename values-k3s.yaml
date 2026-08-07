@@ -20,7 +20,7 @@ ingress:
   className: traefik   # Traefik embarqué de K3s
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    # cert-manager.io/cluster-issuer: letsencrypt-prod   # si cert-manager
+    cert-manager.io/cluster-issuer: letsencrypt-prod   # si cert-manager
   host: vaultwarden.georgeop.us
   tls:
     enabled: true

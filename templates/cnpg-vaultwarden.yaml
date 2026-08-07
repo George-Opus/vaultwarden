@@ -1,0 +1,66 @@
+# ============================================================
+# 2) Cluster PostgreSQL HA pour Vaultwarden
+#    À déployer dans le même namespace que Vaultwarden.
+#    CNPG crée automatiquement le secret `vaultwarden-db-app`
+#    (clés: uri, username, password, ...) consommé par le chart.
+# ============================================================
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: vaultwarden-db
+  namespace: vaultwarden
+spec:
+  instances: 1               # mono-node: 1 seule instance (passer à 3 en multi-node)
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+
+  bootstrap:
+    initdb:
+      database: vaultwarden
+      owner: vaultwarden
+      # le mot de passe est généré automatiquement dans vaultwarden-db-app
+
+  storage:
+    size: 10Gi
+    storageClass: local-path        # provisioner rancher.io/local-path (RWO)
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"
+
+  # Sauvegardes vers S3 (décommenter et adapter — Scality/OVH/etc.)
+  # backup:
+  #   retentionPolicy: "14d"
+  #   barmanObjectStore:
+  #     destinationPath: s3://backups/vaultwarden-db
+  #     endpointURL: https://s3.example.com
+  #     s3Credentials:
+  #       accessKeyId:
+  #         name: vaultwarden-db-backup-s3
+  #         key: ACCESS_KEY_ID
+  #       secretAccessKey:
+  #         name: vaultwarden-db-backup-s3
+  #         key: SECRET_ACCESS_KEY
+  #     wal:
+  #       compression: gzip
+---
+# ============================================================
+# 3) (Optionnel) Sauvegarde planifiée CNPG
+# ============================================================
+# apiVersion: postgresql.cnpg.io/v1
+# kind: ScheduledBackup
+# metadata:
+#   name: vaultwarden-db-daily
+#   namespace: vaultwarden
+# spec:
+#   schedule: "0 0 3 * * *"   # format cron à 6 champs (secondes en premier)
+#   cluster:
+#     name: vaultwarden-db
+#   backupOwnerReference: self

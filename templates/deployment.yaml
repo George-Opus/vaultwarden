@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vaultwarden.fullname" . }}
+  labels:
+    {{- include "vaultwarden.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.database.enabled }}
+  {{- if gt (int .Values.replicaCount) 1 }}
+  {{- fail "replicaCount > 1 requiert database.enabled=true (SQLite ne supporte pas le multi-replicas)" }}
+  {{- end }}
+  {{- end }}
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    {{- if .Values.database.enabled }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+    {{- else }}
+    type: Recreate  # SQLite + RWO => éviter deux pods simultanés sur le même volume
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "vaultwarden.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "vaultwarden.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: vaultwarden
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: DOMAIN
+              value: {{ .Values.vaultwarden.domain | quote }}
+            - name: ROCKET_PORT
+              value: "8080"
+            - name: SIGNUPS_ALLOWED
+              value: {{ .Values.vaultwarden.signupsAllowed | quote }}
+            {{- with .Values.vaultwarden.signupsDomainsWhitelist }}
+            - name: SIGNUPS_DOMAINS_WHITELIST
+              value: {{ . | quote }}
+            {{- end }}
+            - name: INVITATIONS_ALLOWED
+              value: {{ .Values.vaultwarden.invitationsAllowed | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.vaultwarden.logLevel | quote }}
+            - name: DATA_FOLDER
+              value: /data
+            {{- if .Values.database.enabled }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.secretKey }}
+            {{- end }}
+            {{- if or .Values.vaultwarden.adminToken .Values.vaultwarden.existingAdminTokenSecret }}
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vaultwarden.adminTokenSecretName" . }}
+                  key: ADMIN_TOKEN
+            {{- end }}
+            {{- if .Values.vaultwarden.smtp.enabled }}
+            - name: SMTP_HOST
+              value: {{ .Values.vaultwarden.smtp.host | quote }}
+            - name: SMTP_PORT
+              value: {{ .Values.vaultwarden.smtp.port | quote }}
+            - name: SMTP_SECURITY
+              value: {{ .Values.vaultwarden.smtp.security | quote }}
+            - name: SMTP_FROM
+              value: {{ .Values.vaultwarden.smtp.from | quote }}
+            - name: SMTP_FROM_NAME
+              value: {{ .Values.vaultwarden.smtp.fromName | quote }}
+            {{- if .Values.vaultwarden.smtp.existingSecret }}
+            - name: SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vaultwarden.smtp.existingSecret }}
+                  key: SMTP_USERNAME
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vaultwarden.smtp.existingSecret }}
+                  key: SMTP_PASSWORD
+            {{- else if .Values.vaultwarden.smtp.username }}
+            - name: SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vaultwarden.fullname" . }}-smtp
+                  key: SMTP_USERNAME
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vaultwarden.fullname" . }}-smtp
+                  key: SMTP_PASSWORD
+            {{- end }}
+            {{- end }}
+            {{- with .Values.vaultwarden.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "vaultwarden.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

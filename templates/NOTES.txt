@@ -1,0 +1,20 @@
+Vaultwarden déployé.
+
+URL : {{ .Values.vaultwarden.domain }}
+
+{{- if not (or .Values.vaultwarden.adminToken .Values.vaultwarden.existingAdminTokenSecret) }}
+NOTE : la page /admin est désactivée (aucun ADMIN_TOKEN défini).
+Pour l'activer, générer un hash argon2 :
+  docker run --rm -it vaultwarden/server /vaultwarden hash
+puis renseigner vaultwarden.adminToken ou existingAdminTokenSecret.
+{{- end }}
+
+{{- if not .Values.vaultwarden.smtp.enabled }}
+NOTE : SMTP désactivé - les invitations par email ne fonctionneront pas.
+{{- end }}
+
+Migration depuis l'ancien conteneur : copier le contenu du dossier /data
+(db.sqlite3, attachments/, rsa_key*, config.json) dans le PVC, pod arrêté :
+  kubectl scale deploy/{{ include "vaultwarden.fullname" . }} --replicas=0
+  kubectl cp ...   # via un pod utilitaire monté sur le PVC
+  kubectl scale deploy/{{ include "vaultwarden.fullname" . }} --replicas=1

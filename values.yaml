@@ -1,0 +1,27 @@
+# values-k3s.yaml — override pour K3s mono-node / local-path
+# Usage: helm upgrade --install vaultwarden ./vaultwarden -n vaultwarden -f values-k3s.yaml
+
+replicaCount: 1   # mono-node: le multi-replicas n'apporte rien et local-path est RWO
+
+database:
+  enabled: true
+  existingSecret: "vaultwarden-db-app"
+  secretKey: "uri"
+
+persistence:
+  enabled: true
+  storageClass: "local-path"
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+
+ingress:
+  enabled: true
+  className: traefik   # Traefik embarqué de K3s
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    cert-manager.io/cluster-issuer: letsencrypt-prod   # si cert-manager
+  host: vaultwarden.georgeop.us
+  tls:
+    enabled: true
+    secretName: vaultwarden-tls
